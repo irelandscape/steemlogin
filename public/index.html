@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Sign in using Steemlogin</title>
+
+    <script src="https://www.gstatic.com/firebasejs/5.8.3/firebase.js"></script>
+    <!-- update the version number as needed -->
+    <script src="https://www.gstatic.com/firebasejs/5.8.3/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/5.8.3/firebase-firestore.js"></script>
+    <!-- include only the Firebase features as you need -->
+    <script defer src="/__/firebase/5.8.3/firebase-auth.js"></script>
+    <script defer src="/__/firebase/5.8.3/firebase-database.js"></script>
+    <!-- initialize the SDK after all desired features are loaded -->
+    <script defer src="/__/firebase/init.js"></script>
+    <script src="https://cdn.firebase.com/libs/firebaseui/3.5.2/firebaseui.js"></script>
+    <script src="/steem.min.js"></script>
+    <link type="text/css" rel="stylesheet" href="https://cdn.firebase.com/libs/firebaseui/3.5.2/firebaseui.css" />
+
+
+    <style media="screen">
+      body { background: #ECEFF1; color: rgba(0,0,0,0.87); font-family: Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; }
+      #message { background: white; max-width: 360px; margin: 100px auto 16px; padding: 32px 24px; border-radius: 3px; }
+      #message h2 { color: #ffa100; font-weight: bold; font-size: 16px; margin: 0 0 8px; }
+      #message h1 { font-size: 22px; font-weight: 300; color: rgba(0,0,0,0.6); margin: 0 0 16px;}
+      #message p { line-height: 140%; margin: 16px 0 24px; font-size: 14px; }
+      #message a { display: block; text-align: center; background: #039be5; text-transform: uppercase; text-decoration: none; color: white; padding: 16px; border-radius: 4px; }
+      #message, #message a { box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24); }
+      #load { color: rgba(0,0,0,0.4); text-align: center; font-size: 13px; }
+
+      form { display: table; }
+      form .row { display: table-row; }
+      label { display: table-cell; }
+      input { display: table-cell; }
+      button { display: table-cell; }
+      form .cell { display: table-cell; }
+      form img { width: 1rem; margin-left: 0.5rem; }
+
+      .hidden { visibility: hidden; display: none;}
+      .visible { visibility: visible; display block; }
+
+      @media (max-width: 600px) {
+        body, #message { margin-top: 0; background: white; box-shadow: none; }
+        body { border-top: 16px solid #ffa100; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="message">
+	  <!-- The surrounding HTML is left untouched by FirebaseUI.
+			   Your app may use that space for branding, controls and other customizations.-->
+	  <h2>Sign in to <span data-app=""></span> using Steemlogin</h2>
+	  <div id="firebaseui-auth-container"></div>
+	  <div id="loader">Loading...</div>
+
+      <div id="confirmDeletion" class="hidden">
+        <p>
+          You are about to remove details about the <span id="deletesteemusername"></span> Steem account from Steemlogin.
+        </p>
+        <p>
+          Are you sure?
+        </p>
+        <button id="deletesteem">Yes, delete!</button>
+        <button id="canceldeletesteem">CANCEL</button>
+      </div>
+
+      <div id="steemform" class="hidden">
+        <p>
+          Your Steem Posting Key (PK) is currently not stored in our system.
+        </p>
+        <p>
+          You can use the form below to store this information in our database.<br/>
+          Doing so means that you will from now on be able to post and upvote on the Steem blockchain from any app supporting Steemlogin using your Google/Facebook/Twitter/Github login.
+        </p>
+        <p>
+          If you continue, your Posting Key won't be requested anymore on those apps.
+        </p>
+
+        <form action="javascript:void(0);">
+          <div class="row">
+            <label for="steemUsername">Steem username:</label>
+            <input type="text" id="steemUsername" ></input>
+            <div class="cell">
+              <img id="validusername" src="/checked.svg" title="Valid username" class="hidden"/>
+              <img id="invalidusername" src="/error.svg" title="Invalid username" class="hidden"/>
+            </div>
+          </div>
+          <div class="row">
+            <label for="postingKey">Private Posting Key:</label>
+            <input type="password" id="postingKey" maxlength="51" />
+            <div class="cell">
+              <img id="validpk" src="/checked.svg" title="Valid password" class="hidden"/>
+              <img id="invalidpk" src="/error.svg" title="Invalid password" class="hidden"/>
+            </div>
+          </div>
+          <div class="row">
+            <label></label>
+            <button id="submitSteemDetails" disabled>Store Private Posting Key</button>
+            <div class="cell" />
+          </div class="row">
+        </form>
+      </div>
+    </div>
+    <p id="load">Firebase SDK Loading&hellip;</p>
+
+    <script>
+      function getAppFromUrlParams () {
+        let urlParams = new URLSearchParams(window.location.search);
+        
+        if (urlParams.has('app')) {
+          return urlParams.get('app')
+        }
+      }
+
+      function isDev () {
+        let urlParams = new URLSearchParams(window.location.search);
+        
+        return urlParams.has('dev')
+      }
+
+      function redirectToSuccessUrl (url,
+                                     authCode) {
+        firebase.auth().signOut()
+        window.location = url + '?authCode=' + encodeURIComponent(authCode)
+      }
+
+      function redirectToFailureUrl (error) {
+        var db = firebase.firestore();
+        const app = getAppFromUrlParams()
+
+        firebase.auth().signOut()
+
+        var docRef = db.collection('apps').doc(app)
+        docRef.get().then(function(doc) {
+          const data = doc.data()
+          window.location = data.failureUrl + '?error=' + encodeURI(error)
+        }).catch(() => {
+          window.history.back()
+        })
+      }
+
+      // Check if username, private posting key combination is valid
+      // This is needed to avoid storing invalid Steem details into DB
+      function checkPostingKey () {
+        const validpk = document.getElementById('validpk')
+        const invalidpk = document.getElementById('invalidpk')
+        const inputUsername = document.getElementById('steemUsername').value
+        const button = document.getElementById('submitSteemDetails')
+        button.disabled = true
+
+        steem.api.getAccounts([inputUsername], 
+                              function(err, result) {
+          if (result.length != 0) {
+            validusername.className = 'visible'
+            invalidusername.className = 'hidden'
+
+            const pubWif = result[0].posting.key_auths[0][0]
+            const privWif = document.getElementById('postingKey').value
+
+            if (steem.auth.isWif(privWif) &&
+                steem.auth.wifIsValid(privWif, pubWif)) {
+              validpk.className = 'visible'
+              invalidpk.className = 'hidden'
+              button.disabled = false
+            } else {
+              validpk.className = 'hidden'
+              invalidpk.className = 'visible'
+            }
+          } else {
+            validusername.className = 'hidden'
+            invalidusername.className = 'visible'
+            validpk.className = 'hidden'
+            invalidpk.className = 'visible'
+          }
+        })
+      }
+
+      // Store user information in DB
+      function storeAuthCode (app,
+                              steemUsername,
+                              steemPostingKey,
+                              authResult,
+                              authCode) {
+        const authDetails = {
+          created: firebase.firestore.Timestamp.now(),
+          steemUsername: steemUsername,
+          steemPostingKey: steemPostingKey,
+          providerId: authResult.credential.providerId,
+          accessToken: authResult.credential.accessToken
+        }
+
+        var db = firebase.firestore();
+        const uid = authResult.user.uid
+        db.collection('authCodes').doc(authCode).set({
+          uid: uid,
+          authDetails: authDetails
+        }).then(function () {
+          if (isDev()) {
+            redirectToSuccessUrl(app.devSuccessUrl, authCode)
+          } else {
+            redirectToSuccessUrl(app.successUrl, authCode)
+          }
+        }).catch(function(error) {
+          console.log('Failed to store authorization code: ', error)
+        })
+      }
+
+      // Generate cryptographic unique authentication code.
+      // This authentication code can only be used once by the client
+      // to retrieve the authentication tokens and Steem details.
+      function generateAuthCode (app,
+                                 steemUsername,
+                                 steemPostingKey,
+                                 authResult) {
+        window.crypto.subtle.generateKey(
+          {
+            name: 'AES-CBC', 
+            length: 256
+          }, 
+          true, 
+          ['encrypt']).then(function(key) {
+            crypto.subtle.exportKey('raw', key).then(function(buf) {
+              let authCode = window.btoa(String.fromCharCode.apply(null, new Uint8Array(buf)))
+              // slash is not supported in a firestore document id
+              authCode = authCode.replace(/=/g, 'X').replace(/\//g, 'Y').replace(/\+/g, 'Z')
+              storeAuthCode(app,
+                            steemUsername,
+                            steemPostingKey,
+                            authResult,
+                            authCode)
+            })
+          }).catch(function(error) {
+            console.log('Failed to generate authorization code: ', error)
+          })
+      }
+
+      // Steem user details form has been submitted
+      function onSubmitClicked (authResult, app) {
+        const uid = authResult.user.uid
+        const username = document.getElementById('steemUsername').value
+        const pk = document.getElementById('postingKey').value
+        var db = firebase.firestore();
+
+        db.collection('users').doc(uid).set({
+          steemUsername: username,
+          steemPostingKey: pk
+        }).then(function () {
+          generateAuthCode(app, username, pk, authResult)
+        }).catch(function (error) {
+          console.log('Failed to create user: ', error)
+        })
+      }
+
+      // Show Steem details form and register for input change events
+      // Details will be checked as the user types in the username
+      // and private posting key
+      function showSteemForm (app, authResult) {
+        document.getElementById('steemform').className = 'visible'
+        document.getElementById('submitSteemDetails').onclick = function () { onSubmitClicked(authResult, app) }
+        const inputUsername = document.getElementById('steemUsername')
+        const inputPk = document.getElementById('postingKey')
+        inputUsername.addEventListener('input', checkPostingKey)
+        inputPk.addEventListener('input', checkPostingKey)
+      }
+
+      function processAuth (app, authResult) {
+        const uid = authResult.user.uid
+
+        if (!app.successUrl || !app.successUrl.length) {
+          console.log('No successUrl for app ' + app)
+          return
+        }
+
+        var db = firebase.firestore();
+        var docRef = db.collection('users').doc(uid)
+        docRef.get().then(function(doc) {
+          if (doc.exists) {
+            if (doc.data().steemUsername && doc.data().steemUsername.length && doc.data().steemPostingKey && doc.data().steemPostingKey.length) {
+
+              steem.api.getAccounts([doc.data().steemUsername], 
+                                    function(err, result) {
+                if (result.length != 0) {
+                  const pubWif = result[0].posting.key_auths[0][0]
+                  const privWif = doc.data().steemPostingKey
+
+                  if (steem.auth.isWif(privWif) &&
+                      steem.auth.wifIsValid(privWif, pubWif)) {
+                    generateAuthCode(app,
+                                     doc.data().steemUsername,
+                                     doc.data().steemPostingKey,
+                                     authResult)
+                  } else {
+                    // Key is not valid
+                    showSteemForm(app, authResult)
+                  }
+                } else {
+                  // username is not valid
+                  showSteemForm(app, authResult)
+                }
+              })
+            } else {
+              // username, posting key not stored in db
+              showSteemForm(app, authResult)
+            }
+          } else {
+            // This is a new user
+            showSteemForm(app, authResult)
+          }
+        }).catch(function(error) {
+          console.log("Error getting document:", error);
+          redirectToFailureUrl(error)
+        })
+      }
+
+      // Invoked by firebase when user has completed authentication
+      // with auth provider (e.g Google)
+      function afterAuthentication (authResult, redirectUrl) {
+        // User successfully signed in.
+        // Return type determines whether we continue the redirect automatically
+        // or whether we leave that to developer to handle.
+
+        const app = getAppFromUrlParams()
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('delete')) {
+          showDelete(app)
+          return
+        }
+
+        const db = firebase.firestore();
+        var docRef = db.collection('apps').doc(app)
+        docRef.get().then(function(doc) {
+          if (doc.exists) {
+            const data = doc.data()
+
+            if (!data.successUrl || !data.successUrl.length) {
+              console.log('No successUrl for app ' + app)
+              return false
+            }
+
+            processAuth(data, authResult)
+          } else {
+            console.log('No record for app ' + app)
+          }
+        }).catch(function(error) {
+          console.log("Error getting document:", error);
+          redirectToFailureUrl(error)
+        })
+
+        return false;
+      }
+
+      function beforeAuthentication (app) {
+		// Initialize the FirebaseUI Widget using Firebase.
+		var ui = new firebaseui.auth.AuthUI(firebase.auth());
+
+		var uiConfig = {
+			  callbacks: {
+				signInSuccessWithAuthResult: afterAuthentication,
+                signInFailure: function (error) {
+                  redirectToFailureUrl(error)
+                },
+				uiShown: function() {
+					  // The widget is rendered.
+					  // Hide the loader.
+					  document.getElementById('loader').style.display = 'none';
+				}
+			  },
+			  // Will use popup for IDP Providers sign-in flow instead of the default, redirect.
+			  //signInFlow: 'popup',
+			  signInSuccessUrl: '/' + window.location.search,
+			  signInOptions: [
+				// Leave the lines as is for the providers you want to offer your users.
+				firebase.auth.GoogleAuthProvider.PROVIDER_ID,
+				firebase.auth.FacebookAuthProvider.PROVIDER_ID,
+				firebase.auth.TwitterAuthProvider.PROVIDER_ID,
+				firebase.auth.GithubAuthProvider.PROVIDER_ID
+				//firebase.auth.EmailAuthProvider.PROVIDER_ID,
+				//firebase.auth.PhoneAuthProvider.PROVIDER_ID
+			  ],
+			  // Terms of service url.
+			  tosUrl: '<your-tos-url>',
+			  // Privacy policy url.
+			  privacyPolicyUrl: '<your-privacy-policy-url>'
+		};
+		ui.start('#firebaseui-auth-container', uiConfig);
+      }
+
+      function redirectToSteemRemovedSuccessUrl ()
+      {
+        var db = firebase.firestore();
+        const app = getAppFromUrlParams()
+
+        var docRef = db.collection('apps').doc(app)
+        docRef.get().then(function(doc) {
+          if (doc.exists) {
+            if (doc.data().steemRemovedSuccessUrl && 
+                doc.data().steemRemovedSuccessUrl.length) {
+              window.location = doc.data().steemRemovedSuccessUrl
+            } else {
+              window.history.back()
+            }
+          } else {
+            window.history.back()
+          }
+        }).catch(function(error) {
+          window.history.back()
+        })
+      }
+
+      function redirectToSteemRemovedFailureUrl (error)
+      {
+        var db = firebase.firestore();
+        const app = getAppFromUrlParams()
+
+        var docRef = db.collection('apps').doc(app)
+        docRef.get().then(function(doc) {
+          if (doc.exists) {
+            if (doc.data().steemRemovedFailureUrl && 
+                doc.data().steemRemovedFailureUrl.length) {
+              window.location = doc.data().steemRemovedFailureUrl + '?error=' + encodeURI(error)
+            } else {
+              window.history.back()
+            }
+          } else {
+            window.history.back()
+          }
+        }).catch(function(error) {
+          window.history.back()
+        })
+      }
+
+      function removeSteemAccount () {
+        const app = firebase.app()
+        const user = firebase.auth().currentUser
+        var db = firebase.firestore();
+
+        db.collection('users').doc(user.uid).delete().then(function () {
+          console.log('Steemd user details removed!')
+          redirectToSteemRemovedSuccessUrl()
+        }).catch(function(error) {
+          console.log('Error removing user: ', error)
+          redirectToSteemRemovedFailureUrl(error)
+        })
+      }
+
+      function showDelete (app) {
+          firebase.auth().onAuthStateChanged(function(user) {
+            if (!user) {
+              alert('You need to be logged in to remove your Steem account!')
+              return
+            }
+
+            document.getElementById('confirmDeletion').className = 'visible'
+            const deletesteem = document.getElementById('deletesteem')
+            const canceldelete = document.getElementById('canceldeletesteem')
+            deletesteem.onclick = removeSteemAccount
+            canceldeletesteem.onclick = function () {
+              redirectToSteemRemovedFailureUrl('Operation canceled by user')
+            }
+          })
+      }
+
+      function logout (app) {
+        const db = firebase.firestore();
+        var docRef = db.collection('apps').doc(app)
+        docRef.get().then(function(doc) {
+          if (doc.exists) {
+            const data = doc.data()
+            if (!data.logoutUrl || !data.logoutUrl.length) {
+              console.log('No logoutUrl for app ' + app)
+              return
+            }
+
+            firebase.auth().signOut().then(function() {
+            window.location = data.logoutUrl
+            }).catch(function(error) {
+              console.log('Failed to signout!')
+            });
+          } else {
+            console.log('No record for app ' + app)
+          }
+        }).catch(function(error) {
+          console.log("Error getting document:", error);
+        })
+      }
+
+      function main () {
+        // Initialize Firebase
+        if (!firebase.apps.length) {
+          var config = {
+            apiKey: "AIzaSyD-oeRRO_kPIA3X8078IMtZAtEy1OcLa20",
+            authDomain: "steemlogin-c6c9b.firebaseapp.com",
+            databaseURL: "https://steemlogin-c6c9b.firebaseio.com",
+            projectId: "steemlogin-c6c9b",
+            storageBucket: "steemlogin-c6c9b.appspot.com",
+            messagingSenderId: "959581958981"
+          };
+          firebase.initializeApp(config);
+        }
+
+        const app = getAppFromUrlParams()
+        const urlParams = new URLSearchParams(window.location.search);
+
+        if (app) {
+          let appElems = document.querySelectorAll('[data-app]');
+
+          for (let elem of appElems) {
+            elem.textContent = app
+          }
+        }
+
+        document.getElementById('loader').className = 'hidden'
+
+        if (urlParams.has('logout')) {
+          logout(app)
+          // Will redirect
+        } else {
+          // // 🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥
+          // // The Firebase SDK is initialized and available here!
+          //
+          // firebase.auth().onAuthStateChanged(user => { });
+          // firebase.database().ref('/path/to/ref').on('value', snapshot => { });
+          // firebase.messaging().requestPermission().then(() => { });
+          // firebase.storage().ref('/path/to/ref').getDownloadURL().then(() => { });
+          //
+          // // 🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥
+
+          try {
+            let app = firebase.app();
+            let features = ['auth', 'database', 'messaging', 'storage'].filter(feature => typeof app[feature] === 'function');
+            document.getElementById('load').innerHTML = `Firebase SDK loaded with ${features.join(', ')}`;
+            beforeAuthentication(app)
+          } catch (e) {
+            console.error(e);
+            document.getElementById('load').innerHTML = 'Error loading the Firebase SDK, check the console.';
+          }
+        }
+      }
+
+      document.addEventListener('DOMContentLoaded', main)
+    </script>
+  </body>
+</html>
