@@ -37,6 +37,26 @@
       form .cell { display: table-cell; }
       form img { width: 1rem; margin-left: 0.5rem; }
 
+      button.steemusername {
+        height: 3rem;
+        font-size: 1.2rem;
+        color: 666666;
+        text-align: left;
+        width: 100%;
+        display: flex;
+        align-items: center;
+        margin-bottom: 1rem;
+      }
+
+      button.steemusername img{
+        height: 2.5rem;
+        margin-right: 1rem;
+      }
+
+      button.steemusername .text{
+        vertical-align: middle;
+      }
+
       .hidden { visibility: hidden; display: none;}
       .visible { visibility: visible; display block; }
 
@@ -56,7 +76,7 @@
 
       <div id="confirmDeletion" class="hidden">
         <p>
-          You are about to remove details about the <span id="deletesteemusername"></span> Steem account from Steemlogin.
+          You are about to remove all details about your Steem accounts from Steemlogin.
         </p>
         <p>
           Are you sure?
@@ -64,6 +84,19 @@
         <button id="deletesteem">Yes, delete!</button>
         <button id="canceldeletesteem">CANCEL</button>
       </div>
+      <div id="selectaccount" class="hidden">
+        <h2>Please select your Steem account</h2>
+        <div id="steemaccounts">
+        </div>
+        <p style="text-align:center;">
+          --- OR ---
+        </p>
+        <button id="addsteemaccount" type="submit" class="steemusername">
+          <img src="https://i.postimg.cc/y8c9XGNK/plus-add-green.png"/>
+          <div class="text">Add other Steem account</div>
+        </button><br/>
+      </div>
+      <div id="deleteresult" class="hidden"></div>
 
       <div id="steemform" class="hidden">
         <p>
@@ -102,7 +135,7 @@
         </form>
       </div>
     </div>
-    <p id="load">Firebase SDK Loading&hellip;</p>
+    <p id="load"></p>
 
     <script>
       function getAppFromUrlParams () {
@@ -236,15 +269,20 @@
       }
 
       // Steem user details form has been submitted
-      function onSubmitClicked (authResult, app) {
+      function onSubmitClicked (authResult, app, steem) {
         const uid = authResult.user.uid
         const username = document.getElementById('steemUsername').value
         const pk = document.getElementById('postingKey').value
         var db = firebase.firestore();
 
+        if (!steem) {
+          steem = {}
+        }
+
+        steem[username] = pk
+
         db.collection('users').doc(uid).set({
-          steemUsername: username,
-          steemPostingKey: pk
+          steem
         }).then(function () {
           generateAuthCode(app, username, pk, authResult)
         }).catch(function (error) {
@@ -255,13 +293,38 @@
       // Show Steem details form and register for input change events
       // Details will be checked as the user types in the username
       // and private posting key
-      function showSteemForm (app, authResult) {
+      function showSteemForm (app, authResult, steem) {
         document.getElementById('steemform').className = 'visible'
-        document.getElementById('submitSteemDetails').onclick = function () { onSubmitClicked(authResult, app) }
+        document.getElementById('submitSteemDetails').onclick = function () { onSubmitClicked(authResult, app, steem) }
         const inputUsername = document.getElementById('steemUsername')
         const inputPk = document.getElementById('postingKey')
         inputUsername.addEventListener('input', checkPostingKey)
         inputPk.addEventListener('input', checkPostingKey)
+      }
+
+      function selectSteemAccount (app, authResult, steem) {
+        let html = ''
+        for (let username in steem) {
+          html +=
+            '<button id="btn' + username + '" type="submit" class="steemusername">' +
+              '<img src="https://steemitimages.com/u/' + username + '/avatar"/>' +
+              '<div class="text">' + username + '</div>'
+            '</button><br/>'
+        }
+
+        document.getElementById('steemaccounts').innerHTML = html
+        document.getElementById('selectaccount').className = 'visible'
+
+        for (let username in steem) {
+          document.getElementById('btn' + username).onclick = function () {
+            generateAuthCode(app, username, steem[username], authResult)
+          }
+        }
+
+        document.getElementById('addsteemaccount').onclick = function () {
+          document.getElementById('selectaccount').className = 'hidden'
+          showSteemForm(app, authResult, steem)
+        }
       }
 
       function processAuth (app, authResult) {
@@ -276,6 +339,14 @@
         var docRef = db.collection('users').doc(uid)
         docRef.get().then(function(doc) {
           if (doc.exists) {
+            if (doc.data().steem && Object.keys(doc.data().steem)) {
+              selectSteemAccount(app, authResult, doc.data().steem)
+            } else {
+              showSteemForm(app, authResult)
+            }
+            
+            return
+
             if (doc.data().steemUsername && doc.data().steemUsername.length && doc.data().steemPostingKey && doc.data().steemPostingKey.length) {
 
               steem.api.getAccounts([doc.data().steemUsername], 
@@ -391,6 +462,13 @@
         var db = firebase.firestore();
         const app = getAppFromUrlParams()
 
+        if (!app) {
+          document.getElementById('deleteresult').innerHTML = '<strong>All Steem accounts details have been successfully removed</strong>'
+          document.getElementById('confirmDeletion').className = 'hidden'
+          document.getElementById('deleteresult').className = 'visible'
+          return
+        }
+
         var docRef = db.collection('apps').doc(app)
         docRef.get().then(function(doc) {
           if (doc.exists) {
@@ -412,6 +490,13 @@
       {
         var db = firebase.firestore();
         const app = getAppFromUrlParams()
+
+        if (!app) {
+          document.getElementById('deleteresult').innerHTML = '<strong>Steem account details FAILED to be removed</strong>'
+          document.getElementById('confirmDeletion').className = 'hidden'
+          document.getElementById('deleteresult').className = 'visible'
+          return
+        }
 
         var docRef = db.collection('apps').doc(app)
         docRef.get().then(function(doc) {
@@ -436,7 +521,6 @@
         var db = firebase.firestore();
 
         db.collection('users').doc(user.uid).delete().then(function () {
-          console.log('Steemd user details removed!')
           redirectToSteemRemovedSuccessUrl()
         }).catch(function(error) {
           console.log('Error removing user: ', error)
@@ -459,30 +543,6 @@
               redirectToSteemRemovedFailureUrl('Operation canceled by user')
             }
           })
-      }
-
-      function logout (app) {
-        const db = firebase.firestore();
-        var docRef = db.collection('apps').doc(app)
-        docRef.get().then(function(doc) {
-          if (doc.exists) {
-            const data = doc.data()
-            if (!data.logoutUrl || !data.logoutUrl.length) {
-              console.log('No logoutUrl for app ' + app)
-              return
-            }
-
-            firebase.auth().signOut().then(function() {
-            window.location = data.logoutUrl
-            }).catch(function(error) {
-              console.log('Failed to signout!')
-            });
-          } else {
-            console.log('No record for app ' + app)
-          }
-        }).catch(function(error) {
-          console.log("Error getting document:", error);
-        })
       }
 
       function main () {
@@ -512,29 +572,22 @@
 
         document.getElementById('loader').className = 'hidden'
 
-        if (urlParams.has('logout')) {
-          logout(app)
-          // Will redirect
-        } else {
-          // // 🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥
-          // // The Firebase SDK is initialized and available here!
-          //
-          // firebase.auth().onAuthStateChanged(user => { });
-          // firebase.database().ref('/path/to/ref').on('value', snapshot => { });
-          // firebase.messaging().requestPermission().then(() => { });
-          // firebase.storage().ref('/path/to/ref').getDownloadURL().then(() => { });
-          //
-          // // 🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥
+        // // 🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥
+        // // The Firebase SDK is initialized and available here!
+        //
+        // firebase.auth().onAuthStateChanged(user => { });
+        // firebase.database().ref('/path/to/ref').on('value', snapshot => { });
+        // firebase.messaging().requestPermission().then(() => { });
+        // firebase.storage().ref('/path/to/ref').getDownloadURL().then(() => { });
+        //
+        // // 🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥
 
-          try {
-            let app = firebase.app();
-            let features = ['auth', 'database', 'messaging', 'storage'].filter(feature => typeof app[feature] === 'function');
-            document.getElementById('load').innerHTML = `Firebase SDK loaded with ${features.join(', ')}`;
-            beforeAuthentication(app)
-          } catch (e) {
-            console.error(e);
-            document.getElementById('load').innerHTML = 'Error loading the Firebase SDK, check the console.';
-          }
+        try {
+          let app = firebase.app();
+          beforeAuthentication(app)
+        } catch (e) {
+          console.error(e);
+          document.getElementById('load').innerHTML = 'Error loading the Firebase SDK, check the console.';
         }
       }
 
