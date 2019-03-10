@@ -167,7 +167,11 @@
         var docRef = db.collection('apps').doc(app)
         docRef.get().then(function(doc) {
           const data = doc.data()
-          window.location = data.failureUrl + '?error=' + encodeURI(error)
+          if (isDev()) {
+            window.location = data.devFailureUrl + '?error=' + encodeURI(error)
+          } else {
+            window.location = data.failureUrl + '?error=' + encodeURI(error)
+          }
         }).catch(() => {
           window.history.back()
         })
@@ -403,6 +407,11 @@
         docRef.get().then(function(doc) {
           if (doc.exists) {
             const data = doc.data()
+
+            if (urlParams.has('testfailure')) {
+              redirectToFailureUrl('Testing authentication failure')
+              return
+            }
 
             if (!data.successUrl || !data.successUrl.length) {
               console.log('No successUrl for app ' + app)
