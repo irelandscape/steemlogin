@@ -395,6 +395,9 @@
         // Return type determines whether we continue the redirect automatically
         // or whether we leave that to developer to handle.
 
+        // Clear anything store on the client side. See privacy policy.
+        localStorage.clear()
+
         const app = getAppFromUrlParams()
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.has('delete')) {
@@ -458,10 +461,8 @@
 				//firebase.auth.EmailAuthProvider.PROVIDER_ID,
 				//firebase.auth.PhoneAuthProvider.PROVIDER_ID
 			  ],
-			  // Terms of service url.
-			  tosUrl: '<your-tos-url>',
 			  // Privacy policy url.
-			  privacyPolicyUrl: '<your-privacy-policy-url>'
+			  privacyPolicyUrl: 'https://www.steemlogin.net/privacy.html'
 		};
 		ui.start('#firebaseui-auth-container', uiConfig);
       }
