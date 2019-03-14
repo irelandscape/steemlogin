@@ -25,7 +25,7 @@
       #message h2 { color: #ffa100; font-weight: bold; font-size: 16px; margin: 0 0 8px; }
       #message h1 { font-size: 22px; font-weight: 300; color: rgba(0,0,0,0.6); margin: 0 0 16px;}
       #message p { line-height: 140%; margin: 16px 0 24px; font-size: 14px; }
-      #message a { display: block; text-align: center; background: #039be5; text-transform: uppercase; text-decoration: none; color: white; padding: 16px; border-radius: 4px; }
+      #message a { display: block; text-align: center; background: #039be5; text-transform: uppercase; text-decoration: none; color: white; padding: 16px; border-radius: 4px; margin-top: 1rem; }
       #message, #message a { box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24); }
       #load { color: rgba(0,0,0,0.4); text-align: center; font-size: 13px; }
 
@@ -37,18 +37,33 @@
       form .cell { display: table-cell; }
       form img { width: 1rem; margin-left: 0.5rem; }
 
-      button.steemusername {
+      #selectaccount .steemusername {
+        float: left;
         height: 3rem;
-        font-size: 1.2rem;
+        font-size: 1rem;
         color: 666666;
         text-align: left;
-        width: 100%;
+        width: 80%;
         display: flex;
         align-items: center;
+        margin-bottom: 1rem;
+        margin-right: 5%;
+        cursor: pointer;
+      }
+
+      #selectaccount img{
+        height: 2.5rem;
+        margin-right: 1rem;
+      }
+
+      #selectaccount .delete {
+        width: 15%;
+        cursor: pointer;
         margin-bottom: 1rem;
       }
 
       button.steemusername img{
+        float: right;
         height: 2.5rem;
         margin-right: 1rem;
       }
@@ -94,20 +109,26 @@
         <button id="addsteemaccount" type="submit" class="steemusername">
           <img src="https://i.postimg.cc/y8c9XGNK/plus-add-green.png"/>
           <div class="text">Add other Steem account</div>
-        </button><br/>
+        </button>
+        <div style="clear: both;"></div>
       </div>
       <div id="deleteresult" class="hidden"></div>
 
       <div id="steemform" class="hidden">
         <p>
-          Your Steem Posting Key (PK) is currently not stored in our system.
+          Please enter your Steem details below.<br/>
+          This information will be stored securely on our server.
         </p>
         <p>
-          You can use the form below to store this information in our database.<br/>
-          Doing so means that you will from now on be able to post and upvote on the Steem blockchain from any app supporting Steemlogin using your Google/Facebook/Twitter/Github login.
+          The private posting key allows editing posts, upvoting, re-steem and follow other Steem users.
+        </p>
         </p>
         <p>
-          If you continue, your Posting Key won't be requested anymore on those apps.
+          The posting key <strong>cannot</strong> be used for financial transactions or modify other keys.
+        </p>
+        <p>
+          You can remove your details from our database at any stage.
+          Please check our privacy policy.
         </p>
 
         <form action="javascript:void(0);">
@@ -135,6 +156,7 @@
         </form>
       </div>
     </div>
+    <a href="https://www.steemlogin.net/privacy.html" alt="privacy policy"target="_blank">SteemLogin Privacy Policy</a>
     <p id="load"></p>
 
     <script>
@@ -310,10 +332,14 @@
         let html = ''
         for (let username in steem) {
           html +=
-            '<button id="btn' + username + '" type="submit" class="steemusername">' +
-              '<img src="https://steemitimages.com/u/' + username + '/avatar"/>' +
-              '<div class="text">' + username + '</div>'
-            '</button><br/>'
+            '<div>' +
+              '<button id="btn' + username + '" type="submit" class="steemusername">' +
+                '<img src="https://steemitimages.com/u/' + username + '/avatar"/>' +
+                '<div class="text">' + username + '</div>' +
+              '<button id="btndelete' + username + '" type="submit" class="delete">' +
+                '<img src="https://i.postimg.cc/wxLBw7gP/479300.png"/>' +
+              '</button>' +
+            '</div>'
         }
 
         document.getElementById('steemaccounts').innerHTML = html
@@ -322,6 +348,23 @@
         for (let username in steem) {
           document.getElementById('btn' + username).onclick = function () {
             generateAuthCode(app, username, steem[username], authResult)
+          }
+
+          document.getElementById('btndelete' + username).onclick = function () {
+            if (confirm('Remove ' + username + ' details from SteemLogin?')) {
+              delete steem[username]
+
+              var db = firebase.firestore();
+              const uid = authResult.user.uid
+
+              db.collection('users').doc(uid).set({
+                steem
+              }).then(function () {
+                selectSteemAccount(app, authResult, steem)
+              }).catch(function (error) {
+                console.log('Failed to remove ' + username + ': ', error)
+              })
+            }
           }
         }
 
