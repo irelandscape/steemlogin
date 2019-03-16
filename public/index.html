@@ -246,7 +246,23 @@
           steemUsername: steemUsername,
           steemPostingKey: steemPostingKey,
           providerId: authResult.credential.providerId,
-          accessToken: authResult.credential.accessToken
+          providerData: authResult.user.providerData
+        }
+
+        if (authResult.credential.accessToken) {
+          authDetails.accessToken = authResult.credential.accessToken
+        }
+
+        if (authResult.credential.idToken) {
+          authDetails.idToken = authResult.credential.idToken
+        }
+
+        if (authResult.credential.secret) {
+          authDetails.secret = authResult.credential.secret
+        }
+
+        if (authResult.refreshToken) {
+          authDetails.refreshToken = authResult.refreshToken
         }
 
         var db = firebase.firestore();
