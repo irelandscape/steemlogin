@@ -407,36 +407,6 @@
             } else {
               showSteemForm(app, authResult)
             }
-            
-            return
-
-            if (doc.data().steemUsername && doc.data().steemUsername.length && doc.data().steemPostingKey && doc.data().steemPostingKey.length) {
-
-              steem.api.getAccounts([doc.data().steemUsername], 
-                                    function(err, result) {
-                if (result.length != 0) {
-                  const pubWif = result[0].posting.key_auths[0][0]
-                  const privWif = doc.data().steemPostingKey
-
-                  if (steem.auth.isWif(privWif) &&
-                      steem.auth.wifIsValid(privWif, pubWif)) {
-                    generateAuthCode(app,
-                                     doc.data().steemUsername,
-                                     doc.data().steemPostingKey,
-                                     authResult)
-                  } else {
-                    // Key is not valid
-                    showSteemForm(app, authResult)
-                  }
-                } else {
-                  // username is not valid
-                  showSteemForm(app, authResult)
-                }
-              })
-            } else {
-              // username, posting key not stored in db
-              showSteemForm(app, authResult)
-            }
           } else {
             // This is a new user
             showSteemForm(app, authResult)
