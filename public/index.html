@@ -214,6 +214,10 @@
             validusername.className = 'visible'
             invalidusername.className = 'hidden'
 
+            /* We can check if private key is valid by retrieving the public key
+             * and comparing it to the private key -> public key conversion 
+             * result.
+             */
             const pubWif = result[0].posting.key_auths[0][0]
             const privWif = document.getElementById('postingKey').value
 
@@ -227,6 +231,7 @@
               invalidpk.className = 'visible'
             }
           } else {
+            // No Steem user under this username
             validusername.className = 'hidden'
             invalidusername.className = 'visible'
             validpk.className = 'hidden'
@@ -288,6 +293,7 @@
                                  steemUsername,
                                  steemPostingKey,
                                  authResult) {
+        // Use crypto subtle to generate an unpredictable authorization code.
         window.crypto.subtle.generateKey(
           {
             name: 'AES-CBC', 
@@ -296,6 +302,7 @@
           true, 
           ['encrypt']).then(function(key) {
             crypto.subtle.exportKey('raw', key).then(function(buf) {
+              // Convert result key into ascii using base-64
               let authCode = window.btoa(String.fromCharCode.apply(null, new Uint8Array(buf)))
               // slash is not supported in a firestore document id
               authCode = authCode.replace(/=/g, 'X').replace(/\//g, 'Y').replace(/\+/g, 'Z')
@@ -344,8 +351,11 @@
         inputPk.addEventListener('input', checkPostingKey)
       }
 
+      // Present user with a list of buttons allowing him/her to login using one of his/her accounts.
       function selectSteemAccount (app, authResult, steem) {
         let html = ''
+        // Allow user to login using any of his/her accounts.
+        // Also allow user to delete his/her Steem details from Steemlogin.
         for (let username in steem) {
           html +=
             '<div>' +
@@ -363,11 +373,14 @@
 
         for (let username in steem) {
           document.getElementById('btn' + username).onclick = function () {
+            // Account button has been clicked. Proceed to authentication code generation.
             generateAuthCode(app, username, steem[username], authResult)
           }
 
           document.getElementById('btndelete' + username).onclick = function () {
+            // User requested deleting a specific account. Request confirmation.
             if (confirm('Remove ' + username + ' details from SteemLogin?')) {
+              // Delete steem details for this account from backend DB.
               delete steem[username]
 
               var db = firebase.firestore();
@@ -376,6 +389,7 @@
               db.collection('users').doc(uid).set({
                 steem
               }).then(function () {
+                // Refresh list of available accounts.
                 selectSteemAccount(app, authResult, steem)
               }).catch(function (error) {
                 console.log('Failed to remove ' + username + ': ', error)
@@ -385,11 +399,15 @@
         }
 
         document.getElementById('addsteemaccount').onclick = function () {
+          // User as clicked button to add a new steem account.
+          // Hide list of accounts and show form to enter a new account.
           document.getElementById('selectaccount').className = 'hidden'
           showSteemForm(app, authResult, steem)
         }
       }
 
+      // Function to process authentication information returned by 
+      // authentication provider (e.g. Google)
       function processAuth (app, authResult) {
         const uid = authResult.user.uid
 
@@ -402,6 +420,9 @@
         var docRef = db.collection('users').doc(uid)
         docRef.get().then(function(doc) {
           if (doc.exists) {
+            // If this user id exists in SteemLogin, show all known Steem accounts.
+            // If not, present user with a form allowing him/her to enter a Steem
+            // account details.
             if (doc.data().steem && Object.keys(doc.data().steem)) {
               selectSteemAccount(app, authResult, doc.data().steem)
             } else {
@@ -434,12 +455,14 @@
           return
         }
 
+        // Make sure calling app is in Steemlogin DB.
         const db = firebase.firestore();
         var docRef = db.collection('apps').doc(app)
         docRef.get().then(function(doc) {
           if (doc.exists) {
             const data = doc.data()
 
+            // Has the application specified the 'testfailure' query parameter?
             if (urlParams.has('testfailure')) {
               redirectToFailureUrl('Testing authentication failure')
               return
@@ -450,6 +473,7 @@
               return false
             }
 
+            // Now process authentication result information supplied by authentication provider.
             processAuth(data, authResult)
           } else {
             console.log('No record for app ' + app)
@@ -462,38 +486,40 @@
         return false;
       }
 
+      // First function entered after initialisation
       function beforeAuthentication (app) {
-		// Initialize the FirebaseUI Widget using Firebase.
-		var ui = new firebaseui.auth.AuthUI(firebase.auth());
+        // Initialize the FirebaseUI Widget using Firebase.
+        var ui = new firebaseui.auth.AuthUI(firebase.auth());
 
-		var uiConfig = {
-			  callbacks: {
-				signInSuccessWithAuthResult: afterAuthentication,
-                signInFailure: function (error) {
-                  redirectToFailureUrl(error)
-                },
-				uiShown: function() {
-					  // The widget is rendered.
-					  // Hide the loader.
-					  document.getElementById('loader').style.display = 'none';
-				}
-			  },
-			  // Will use popup for IDP Providers sign-in flow instead of the default, redirect.
-			  //signInFlow: 'popup',
-			  signInSuccessUrl: '/' + window.location.search,
-			  signInOptions: [
-				// Leave the lines as is for the providers you want to offer your users.
-				firebase.auth.GoogleAuthProvider.PROVIDER_ID,
-				firebase.auth.FacebookAuthProvider.PROVIDER_ID,
-				firebase.auth.TwitterAuthProvider.PROVIDER_ID,
-				firebase.auth.GithubAuthProvider.PROVIDER_ID
-				//firebase.auth.EmailAuthProvider.PROVIDER_ID,
-				//firebase.auth.PhoneAuthProvider.PROVIDER_ID
-			  ],
-			  // Privacy policy url.
-			  privacyPolicyUrl: 'https://www.steemlogin.net/privacy.html'
-		};
-		ui.start('#firebaseui-auth-container', uiConfig);
+        var uiConfig = {
+          callbacks: {
+            signInSuccessWithAuthResult: afterAuthentication,
+            signInFailure: function (error) {
+              redirectToFailureUrl(error)
+            },
+            uiShown: function() {
+              // The widget is rendered.
+              // Hide the loader.
+              document.getElementById('loader').style.display = 'none';
+            }
+          },
+          // Will use popup for IDP Providers sign-in flow instead of the default, redirect.
+          //signInFlow: 'popup',
+          signInSuccessUrl: '/' + window.location.search,
+          signInOptions: [
+                // Leave the lines as is for the providers you want to offer your users.
+                firebase.auth.GoogleAuthProvider.PROVIDER_ID,
+                firebase.auth.FacebookAuthProvider.PROVIDER_ID,
+                firebase.auth.TwitterAuthProvider.PROVIDER_ID,
+                firebase.auth.GithubAuthProvider.PROVIDER_ID
+                //firebase.auth.EmailAuthProvider.PROVIDER_ID,
+                //firebase.auth.PhoneAuthProvider.PROVIDER_ID
+          ],
+          // Privacy policy url.
+          privacyPolicyUrl: 'https://www.steemlogin.net/privacy.html'
+        };
+
+        ui.start('#firebaseui-auth-container', uiConfig);
       }
 
       function redirectToSteemRemovedSuccessUrl ()
@@ -568,20 +594,20 @@
       }
 
       function showDelete (app) {
-          firebase.auth().onAuthStateChanged(function(user) {
-            if (!user) {
-              alert('You need to be logged in to remove your Steem account!')
-              return
-            }
+        firebase.auth().onAuthStateChanged(function(user) {
+          if (!user) {
+            alert('You need to be logged in to remove your Steem account!')
+            return
+          }
 
-            document.getElementById('confirmDeletion').className = 'visible'
-            const deletesteem = document.getElementById('deletesteem')
-            const canceldelete = document.getElementById('canceldeletesteem')
-            deletesteem.onclick = removeSteemAccount
-            canceldeletesteem.onclick = function () {
-              redirectToSteemRemovedFailureUrl('Operation canceled by user')
-            }
-          })
+          document.getElementById('confirmDeletion').className = 'visible'
+          const deletesteem = document.getElementById('deletesteem')
+          const canceldelete = document.getElementById('canceldeletesteem')
+          deletesteem.onclick = removeSteemAccount
+          canceldeletesteem.onclick = function () {
+            redirectToSteemRemovedFailureUrl('Operation canceled by user')
+          }
+        })
       }
 
       function main () {
